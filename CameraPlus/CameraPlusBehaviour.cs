@@ -34,7 +34,7 @@ namespace CameraPlus
             set {
                 _thirdPerson = value;
                 _cameraCube.gameObject.SetActive(_thirdPerson && Config.showThirdPersonCamera);
-                _cameraPreviewQuad.gameObject.SetActive(false);
+                //_cameraPreviewQuad.gameObject.SetActive(false);
 
                 if (value)
                 {
@@ -177,7 +177,6 @@ namespace CameraPlus
             _quad.transform.localScale = new Vector3(_cam.aspect, 1, 1);
             _cameraPreviewQuad = _quad;
             */
-
             ReadConfig();
 
             if (ThirdPerson)
@@ -195,10 +194,8 @@ namespace CameraPlus
             // Add our camera movement script if the movement script path is set
             if (Config.movementScriptPath != String.Empty)
                 AddMovementScript();
-
             SetCullingMask();
             CameraMovement.CreateExampleScript();
-
             Plugin.Instance.ActiveSceneChanged += SceneManager_activeSceneChanged;
 
             //      FirstPersonOffset = Config.FirstPersonPositionOffset;
@@ -268,8 +265,6 @@ namespace CameraPlus
                 _cam.pixelRect = new Rect(Config.ScreenPosition, Config.ScreenSize);
                 _cam.clearFlags = CameraClearFlags.Depth;
                 _cam.depth = Config.layer;
-
-                _cam.targetTexture = RenderTexture.active;
 
                 _prevFitToCanvas = Config.fitToCanvas;
                 _prevAA = Config.antiAliasing;
