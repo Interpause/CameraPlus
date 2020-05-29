@@ -115,7 +115,6 @@
     <Compile Include="CameraPlusBehaviour.cs" />
     <Compile Include="ReflectionUtil.cs" />
     <Compile Include="RootConfig.cs" />
-    <Compile Include="ScreenCameraBehaviour.cs" />
     <Compile Include="SimpleJSON.cs" />
     <Compile Include="CameraMovement.cs" />
     <Compile Include="TransparentWallsPatch.cs" />
@@ -125,9 +124,6 @@
     <EmbeddedResource Include="manifest.json" />
     <EmbeddedResource Include="Resources\ExampleMovementScript.json" />
   </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="Resources\alphafilter" />
-  </ItemGroup>  
   <ItemGroup>
     <EmbeddedResource Include="Resources\Resize_DiagLeft.png" />
     <EmbeddedResource Include="Resources\Resize_DiagRight.png" />

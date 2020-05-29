@@ -34,7 +34,7 @@ namespace CameraPlus
             set {
                 _thirdPerson = value;
                 _cameraCube.gameObject.SetActive(_thirdPerson && Config.showThirdPersonCamera);
-                _cameraPreviewQuad.gameObject.SetActive(_thirdPerson && Config.showThirdPersonCamera);
+                _cameraPreviewQuad.gameObject.SetActive(false);
 
                 if (value)
                 {
@@ -53,12 +53,9 @@ namespace CameraPlus
         public Vector3 ThirdPersonPos;
         public Vector3 ThirdPersonRot;
         public Config Config;
-
-        protected RenderTexture _camRenderTexture;
         protected Material _previewMaterial;
         protected Camera _cam;
         protected Transform _cameraCube;
-        protected ScreenCameraBehaviour _screenCamera;
         protected GameObject _cameraPreviewQuad;
         protected Camera _mainCamera = null;
         protected CameraMoverPointer _moverPointer = null;
@@ -147,8 +144,6 @@ namespace CameraPlus
             if (_liv)
                 Destroy(_liv);
 
-            _screenCamera = new GameObject("Screen Camera").AddComponent<ScreenCameraBehaviour>();
-
             if (_previewMaterial == null)
                 _previewMaterial = new Material(Shader.Find("Hidden/BlitCopyWithDepth"));
 
@@ -171,6 +166,7 @@ namespace CameraPlus
             _cameraCube.localScale = new Vector3(0.15f, 0.15f, 0.22f);
             _cameraCube.name = "CameraCube";
 
+            /*
             _quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
             DontDestroyOnLoad(_quad);
             DestroyImmediate(_quad.GetComponent<Collider>());
@@ -180,6 +176,7 @@ namespace CameraPlus
             _quad.transform.localEulerAngles = new Vector3(0, 180, 0);
             _quad.transform.localScale = new Vector3(_cam.aspect, 1, 1);
             _cameraPreviewQuad = _quad;
+            */
 
             ReadConfig();
 
@@ -220,10 +217,6 @@ namespace CameraPlus
             // Close our context menu if its open, and destroy all associated controls, otherwise the game will lock up
             CloseContextMenu();
 
-            _camRenderTexture.Release();
-
-            if (_screenCamera)
-                Destroy(_screenCamera.gameObject);
             if (_cameraCubeGO)
                 Destroy(_cameraCubeGO);
             if (_quad)
@@ -261,32 +254,6 @@ namespace CameraPlus
         {
             HMMainThreadDispatcher.instance.Enqueue(delegate
             {
-                var replace = false;
-                if (_camRenderTexture == null)
-                {
-                    _camRenderTexture = new RenderTexture(1, 1, 24, RenderTextureFormat.ARGB32);
-                    replace = true;
-                }
-                else
-                {
-                    if (Config.fitToCanvas != _prevFitToCanvas || Config.antiAliasing != _prevAA || Config.screenPosX != _prevScreenPosX || Config.screenPosY != _prevScreenPosY || Config.renderScale != _prevRenderScale || Config.screenHeight != _prevScreenHeight || Config.screenWidth != _prevScreenWidth || Config.layer != _prevLayer)
-                    {
-                        replace = true;
-
-                        _cam.targetTexture = null;
-                        _screenCamera.SetRenderTexture(null);
-                        _screenCamera.SetCameraInfo(new Vector2(0, 0), new Vector2(0, 0), -1000);
-
-                        _camRenderTexture.Release();
-                    }
-                }
-
-                if (!replace)
-                {
-                    //Logger.Log("Don't need to replace");
-                    return;
-                }
-
                 if (Config.fitToCanvas)
                 {
                     Config.screenPosX = 0;
@@ -297,19 +264,12 @@ namespace CameraPlus
 
                 _lastRenderUpdate = DateTime.Now;
                 //GetScaledScreenResolution(Config.renderScale, out var scaledWidth, out var scaledHeight);
-                _camRenderTexture.width = Mathf.Clamp(Mathf.RoundToInt(Config.screenWidth * Config.renderScale), 1, int.MaxValue);
-                _camRenderTexture.height = Mathf.Clamp(Mathf.RoundToInt(Config.screenHeight * Config.renderScale), 1, int.MaxValue);
+                
+                _cam.pixelRect = new Rect(Config.ScreenPosition, Config.ScreenSize);
+                _cam.clearFlags = CameraClearFlags.Depth;
+                _cam.depth = Config.layer;
 
-                _camRenderTexture.useDynamicScale = false;
-                _camRenderTexture.autoGenerateMips = false;
-                _camRenderTexture.antiAliasing = Config.antiAliasing;
-                if(Config.avatarOnly) _camRenderTexture.antiAliasing = 1; //TODO: find workaround, do AA in shader?
-                _camRenderTexture.Create();
-
-                _cam.targetTexture = _camRenderTexture;
-                _previewMaterial.SetTexture("_MainTex", _camRenderTexture);
-                _screenCamera.SetRenderTexture(_camRenderTexture);
-                _screenCamera.SetCameraInfo(Config.ScreenPosition, Config.ScreenSize, Config.layer);
+                _cam.targetTexture = RenderTexture.active;
 
                 _prevFitToCanvas = Config.fitToCanvas;
                 _prevAA = Config.antiAliasing;
@@ -337,15 +297,6 @@ namespace CameraPlus
             if (_moverPointer) Destroy(_moverPointer);
             _moverPointer = pointer.gameObject.AddComponent<CameraMoverPointer>();
             _moverPointer.Init(this, _cameraCube);
-        }
-
-        [DllImport("user32.dll")]
-        static extern System.IntPtr GetActiveWindow();
-
-        protected void OnApplicationFocus(bool hasFocus)
-        {
-            //      if(!hasFocus && GetActiveWindow() == IntPtr.Zero)
-            //         CloseContextMenu();
         }
 
         protected virtual void Update()
@@ -511,9 +462,6 @@ namespace CameraPlus
             {
                 if (Config.avatarOnly)
                 {
-                    _cam.clearFlags = CameraClearFlags.SolidColor;
-                    _cam.backgroundColor = new Color32(0,0,0,255);
-                    _screenCamera.isBackgroundTransparent = true;
                     _cam.cullingMask = 0; //Everything is culled.
                 }
                 if (Config.thirdPerson || Config.use360Camera)
@@ -533,11 +481,6 @@ namespace CameraPlus
                 _cam.cullingMask &= ~(1 << OnlyInThirdPerson);
                 _cam.cullingMask &= ~(1 << OnlyInFirstPerson);
                 _cam.cullingMask &= ~(1 << AlwaysVisible);
-            }
-            if((!Config.avatar) || (!Config.avatarOnly))
-            {
-                _cam.clearFlags = CameraClearFlags.Skybox;
-                _screenCamera.isBackgroundTransparent = false;
             }
             if (Config.debri!="link")
             {
@@ -598,21 +541,6 @@ namespace CameraPlus
         {
             _contextMenu.DisableMenu();
             Destroy(MenuObj);
-            /*
-            if (_menuStrip != null)
-            {
-                _menuStrip.Close();
-                _menuStrip.Items.Clear();
-                foreach (ToolStripItem item in _controlTracker)
-                {
-                    if (item is ToolStripMenuItem)
-                        (item as ToolStripMenuItem).DropDownItems.Clear();
-                    item.Dispose();
-                }
-                _menuStrip.Dispose();
-                _menuStrip = null;
-            }
-            */
             _contextMenuOpen = false;
         }
 
@@ -753,14 +681,8 @@ namespace CameraPlus
             else if (holdingRightClick && _contextMenuEnabled)
             {
                 if (_mouseHeld) return;
-                //       if (_menuStrip == null)
-                //      {
                 DisplayContextMenu();
                 _contextMenuOpen = true;
-                //       }
-                //       _menuStrip.SetBounds(Cursor.Position.X, Cursor.Position.Y, 0, 0);
-                //       if (!_menuStrip.Visible)
-                //           _menuStrip.Show();
                 anyInstanceBusy = true;
                 _mouseHeld = true;
             }
@@ -788,329 +710,6 @@ namespace CameraPlus
                 _contextMenu = MenuObj.AddComponent<ContextMenu>();
             }
             _contextMenu.EnableMenu(Input.mousePosition, this);
-            /*
-            _menuStrip = new ContextMenuStrip();
-            // Adds a new camera into the scene
-            _menuStrip.Items.Add("Add New Camera", null, (p1, p2) =>
-            {
-                lock (Plugin.Instance.Cameras)
-                {
-                    string cameraName = CameraUtilities.GetNextCameraName();
-                    Logger.Log($"Adding new config with name {cameraName}.cfg");
-                    CameraUtilities.AddNewCamera(cameraName);
-                    CameraUtilities.ReloadCameras();
-                    CloseContextMenu();
-                }
-            });
-
-            // Instantiates an exact copy of the currently selected camera
-            _menuStrip.Items.Add("Duplicate Selected Camera", null, (p1, p2) =>
-            {
-                lock (Plugin.Instance.Cameras)
-                {
-                    string cameraName = CameraUtilities.GetNextCameraName();
-                    Logger.Log($"Adding {cameraName}", LogLevel.Notice);
-                    CameraUtilities.AddNewCamera(cameraName, Config);
-                    CameraUtilities.ReloadCameras();
-                    CloseContextMenu();
-                }
-            });
-
-            // Removes the selected camera from the scene, and deletes the config associated with it
-            _menuStrip.Items.Add("Remove Selected Camera", null, (p1, p2) =>
-            {
-                lock (Plugin.Instance.Cameras)
-                {
-                    if (CameraUtilities.RemoveCamera(this))
-                    {
-                        _isCameraDestroyed = true;
-                        CreateScreenRenderTexture();
-                        CloseContextMenu();
-                        Logger.Log("Camera removed!", LogLevel.Notice);
-                    }
-                    else
-                    {
-                        MessageBox.Show("Cannot remove main camera!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
-            });
-            _menuStrip.Items.Add(new ToolStripSeparator());
-
-            // Toggles between third/first person
-            _menuStrip.Items.Add(Config.thirdPerson ? "First Person" : "Third Person", null, (p1, p2) =>
-            {
-                Config.thirdPerson = !Config.thirdPerson;
-                ThirdPerson = Config.thirdPerson;
-                ThirdPersonPos = Config.Position;
-                ThirdPersonRot = Config.Rotation;
-                //FirstPersonOffset = Config.FirstPersonPositionOffset;
-          //     FirstPersonRotationOffset = Config.FirstPersonRotationOffset;
-                CreateScreenRenderTexture();
-                CloseContextMenu();
-                Config.Save();
-            });
-            if (Config.thirdPerson)
-            {
-                // Hides/unhides the third person camera that appears when a camera is in third person mode
-                _menuStrip.Items.Add(Config.showThirdPersonCamera ? "Hide Third Person Camera" : "Show Third Person Camera", null, (p1, p2) =>
-                {
-                    Config.showThirdPersonCamera = !Config.showThirdPersonCamera;
-                    Config.Save();
-                    CreateScreenRenderTexture();
-                    CloseContextMenu();
-                });
-
-                // Hides/unhides the third person camera that appears when a camera is in third person mode
-                _menuStrip.Items.Add("Reset Camera Position/Rotation", null, (p1, p2) =>
-                {
-                    Config.Position = Config.DefaultPosition;
-                    Config.Rotation = Config.DefaultRotation;
-                    Config.FirstPersonPositionOffset = Config.DefaultFirstPersonPositionOffset;
-                    Config.FirstPersonRotationOffset = Config.DefaultFirstPersonRotationOffset;
-                    ThirdPersonPos = Config.DefaultPosition;
-                    ThirdPersonRot = Config.DefaultRotation;
-                    //FirstPersonOffset = Config.FirstPersonPositionOffset;
-             //       FirstPersonRotationOffset = Config.FirstPersonRotationOffset;
-                    Config.Save();
-                    CloseContextMenu();
-                });
-            }
-            _menuStrip.Items.Add(new ToolStripSeparator());
-
-            // Toggle transparent walls
-            _menuStrip.Items.Add(Config.transparentWalls ? "Solid Walls" : "Transparent Walls", null, (p1, p2) =>
-            {
-                Config.transparentWalls = !Config.transparentWalls;
-                SetCullingMask();
-                CloseContextMenu();
-                Config.Save();
-            });
-
-            _menuStrip.Items.Add(Config.forceFirstPersonUpRight ? "Don't Force Camera Upright" : "Force Camera Upright", null, (p1, p2) =>
-            {
-                Config.forceFirstPersonUpRight = !Config.forceFirstPersonUpRight;
-                Config.Save();
-                CloseContextMenu();
-            });
-
-            _menuStrip.Items.Add(new ToolStripSeparator());
-
-            var _layoutMenu = new ToolStripMenuItem("Layout");
-            _controlTracker.Add(_layoutMenu);
-
-            // Sets the layer associated with the current camera
-            _layoutMenu.DropDownItems.Add(new ToolStripLabel("Layer"));
-            var _layerBox = new ToolStripNumberControl();
-            _controlTracker.Add(_layerBox);
-            _layerBox.Maximum = int.MaxValue;
-            _layerBox.Minimum = int.MinValue;
-            _layerBox.Value = Config.layer;
-            _layerBox.ValueChanged += (sender, args) =>
-            {
-                Config.layer = (int)_layerBox.Value;
-                CreateScreenRenderTexture();
-                Config.Save();
-            };
-            _layoutMenu.DropDownItems.Add(_layerBox);
-
-            // FOV
-            _layoutMenu.DropDownItems.Add(new ToolStripLabel("FOV"));
-            var _fov = new ToolStripNumberControl();
-            _controlTracker.Add(_fov);
-            _fov.Maximum = 179;
-            _fov.Minimum = 0;
-            _fov.Value = (decimal)Config.fov;
-
-            _fov.ValueChanged += (sender, args) =>
-            {
-                Config.fov = (int)_fov.Value;
-                SetFOV();
-                CreateScreenRenderTexture();
-                Config.Save();
-            };
-            _layoutMenu.DropDownItems.Add(_fov);
-
-            // Render Scale
-            _layoutMenu.DropDownItems.Add(new ToolStripLabel("Render Scale"));
-            var _renderScale = new ToolStripNumberControl();
-            _controlTracker.Add(_renderScale);
-            _renderScale.Maximum = 4;
-            _renderScale.Minimum = 0.1M;
-            _renderScale.Increment = 0.1M;
-            _renderScale.DecimalPlaces = 1;
-            _renderScale.Value = (decimal)Config.renderScale;
-
-            _renderScale.ValueChanged += (sender, args) =>
-            {
-                Config.renderScale = (float)_renderScale.Value;
-                CreateScreenRenderTexture();
-                Config.Save();
-            };
-            _layoutMenu.DropDownItems.Add(_renderScale);
-            
-
-            // Sets the size of the current cameras pixelrect
-            _layoutMenu.DropDownItems.Add(new ToolStripLabel("Size"));
-            var _widthBox = new ToolStripNumberControl();
-            _controlTracker.Add(_widthBox);
-            _widthBox.Maximum = Screen.width;
-            _widthBox.Minimum = 0;
-            _widthBox.Value = Config.screenWidth;
-            _widthBox.ValueChanged += (sender, args) =>
-            {
-                Config.screenWidth = (int)_widthBox.Value;
-                GL.Clear(false, true, Color.black, 0);
-                CreateScreenRenderTexture();
-                Config.Save();
-            };
-            _layoutMenu.DropDownItems.Add(_widthBox);
-            var _heightBox = new ToolStripNumberControl();
-            _controlTracker.Add(_heightBox);
-            _heightBox.Maximum = Screen.height;
-            _heightBox.Minimum = 0;
-            _heightBox.Value = Config.screenHeight;
-            _heightBox.ValueChanged += (sender, args) =>
-            {
-                Config.screenHeight = (int)_heightBox.Value;
-                GL.Clear(false, true, Color.black, 0);
-                CreateScreenRenderTexture();
-                Config.Save();
-            };
-            _layoutMenu.DropDownItems.Add(_heightBox);
-
-            // Set the location of the current cameras pixelrect
-            _layoutMenu.DropDownItems.Add(new ToolStripLabel("Position"));
-            var _xBox = new ToolStripNumberControl();
-            _controlTracker.Add(_xBox);
-            _xBox.Maximum = Screen.width;
-            _xBox.Minimum = 0;
-            _xBox.Value = Config.screenPosX;
-            _xBox.ValueChanged += (sender, args) =>
-            {
-                Config.screenPosX = (int)_xBox.Value;
-                CreateScreenRenderTexture();
-                Config.Save();
-            };
-            _layoutMenu.DropDownItems.Add(_xBox);
-            var _yBox = new ToolStripNumberControl();
-            _controlTracker.Add(_yBox);
-            _yBox.Maximum = Screen.height;
-            _yBox.Minimum = 0;
-            _yBox.Value = Config.screenPosY;
-            _yBox.ValueChanged += (sender, args) =>
-            {
-                Config.screenPosY = (int)_yBox.Value;
-                CreateScreenRenderTexture();
-                Config.Save();
-            };
-            _layoutMenu.DropDownItems.Add(_yBox);
-
-            
-            // Fit to canvas checkbox
-            var _fitToCanvasBox = new ToolStripCheckBox("Fit to Canvas");
-            _controlTracker.Add(_fitToCanvasBox);
-            _fitToCanvasBox.Checked = Config.fitToCanvas;
-            _fitToCanvasBox.CheckedChanged += (sender, args) =>
-            {
-                Config.fitToCanvas = _fitToCanvasBox.Checked;
-                _widthBox.Enabled = !Config.fitToCanvas;
-                _heightBox.Enabled = !Config.fitToCanvas;
-                _xBox.Enabled = !Config.fitToCanvas;
-                _yBox.Enabled = !Config.fitToCanvas;
-                CreateScreenRenderTexture();
-                Config.Save();
-            };
-            _layoutMenu.DropDownItems.Add(_fitToCanvasBox);
-
-            // Finally, add our layout menu to the main menustrip
-            _menuStrip.Items.Add(_layoutMenu);
-
-            // Set the initial state for our width/height boxes depending on whether or not fitToCanvas is enabled
-            _widthBox.Enabled = !Config.fitToCanvas;
-            _heightBox.Enabled = !Config.fitToCanvas;
-            _xBox.Enabled = !Config.fitToCanvas;
-            _yBox.Enabled = !Config.fitToCanvas;
-
-            // Scripts submenu
-            var _scriptsMenu = new ToolStripMenuItem("Scripts");
-            _controlTracker.Add(_scriptsMenu);
-
-            // Add menu
-            var _addMenu = new ToolStripMenuItem("Add");
-            _controlTracker.Add(_addMenu);
-
-            // Add camera movement script
-            ToolStripItem _addCameraMovement = _addMenu.DropDownItems.Add("Camera Movement", null, (p1, p2) =>
-            {
-                OpenFileDialog ofd = new OpenFileDialog();
-                string path = Path.Combine(BeatSaber.UserDataPath, Plugin.Name, "Scripts");
-                CameraMovement.CreateExampleScript();
-                ofd.InitialDirectory = path;
-                ofd.Title = "Select a script";
-                ofd.FileOk += (sender, e) => {
-                    string file = ((OpenFileDialog)sender).FileName;
-                    if (File.Exists(file))
-                    {
-                        Config.movementScriptPath = file;
-                        Config.Save();
-                        AddMovementScript();
-                    }
-                };
-                ofd.ShowDialog();
-                CloseContextMenu();
-            });
-            _addCameraMovement.Enabled = !File.Exists(Config.movementScriptPath) || (Config.movementScriptPath == "SongMovementScript" || Config.movementScriptPath == String.Empty);
-
-            // Add song camera movement script
-            ToolStripItem _addSongMovement = _addMenu.DropDownItems.Add("Song Camera Movement", null, (p1, p2) =>
-            {
-                Config.movementScriptPath = "SongMovementScript";
-                Config.Save();
-                AddMovementScript();
-                CloseContextMenu();
-            });
-            _addSongMovement.Enabled = Config.movementScriptPath != "SongMovementScript";
-            _scriptsMenu.DropDownItems.Add(_addMenu);
-            
-            // Remove menu
-            var _removeMenu = new ToolStripMenuItem("Remove");
-            _controlTracker.Add(_removeMenu);
-
-            // Remove camera movement script
-            ToolStripItem _removeCameraMovement = _removeMenu.DropDownItems.Add("Camera Movement", null, (p1, p2) =>
-            {
-                Config.movementScriptPath = String.Empty;
-                if (_cameraMovement)
-                    _cameraMovement.Shutdown();
-                Config.Save();
-                CloseContextMenu();
-            });
-            _removeCameraMovement.Enabled = !_addCameraMovement.Enabled;
-
-            // Remove song camera movement script
-            ToolStripItem _removeSongMovement = _removeMenu.DropDownItems.Add("Song Camera Movement", null, (p1, p2) =>
-            {
-                Config.movementScriptPath = String.Empty;
-                if (_cameraMovement)
-                    _cameraMovement.Shutdown();
-                Config.Save();
-                CloseContextMenu();
-            });
-            _removeSongMovement.Enabled = !_addSongMovement.Enabled;
-            _scriptsMenu.DropDownItems.Add(_removeMenu);
-            _menuStrip.Items.Add(_scriptsMenu);
-
-            // Extras submenu
-            var _extrasMenu = new ToolStripMenuItem("Extras");
-            _controlTracker.Add(_extrasMenu);
-            // Just the right number...
-            _extrasMenu.DropDownItems.Add("Spawn 38 Cameras", null, (p1, p2) =>
-            {
-                StartCoroutine(CameraUtilities.Spawn38Cameras());
-                CloseContextMenu();
-            });
-            _menuStrip.Items.Add(_extrasMenu);
-            */
         }
     }
 }
