@@ -4,13 +4,16 @@ using UnityEngine;
 
 namespace CameraPlus
 {
-    class RootConfig
+    public class RootConfig
     {
         public string FilePath { get; }
 
         public bool ProfileSceneChange = false;
         public string MenuProfile = "";
         public string GameProfile = "";
+        public bool ProfileLoadCopyMethod = false;
+        public int CameraQuadLayer = 0;
+        public bool ForceDisableSmoothCamera = true;
 
         public event Action<RootConfig> ConfigChangedEvent;
 

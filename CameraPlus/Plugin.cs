@@ -3,15 +3,14 @@ using System.Reflection;
 using System.Collections;
 using System.Collections.Concurrent;
 using IPA;
-using IPA.Loader;
 using IPA.Utilities;
 using IPALogger = IPA.Logging.Logger;
 using LogLevel = IPA.Logging.Logger.Level;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using Object = UnityEngine.Object;
 using System.IO;
+using Newtonsoft.Json;
 
 namespace CameraPlus
 {
@@ -28,14 +27,39 @@ namespace CameraPlus
         public static string Name => "CameraPlus";
         public static string MainCamera => "cameraplus";
 
-        private RootConfig _rootConfig;
-        private ProfileChanger _profileChanger;
+        public RootConfig _rootConfig;
+        public ProfileChanger _profileChanger;
+        public string _currentProfile;
+
+        public bool MultiplayerSessionInit;
 
         [Init]
         public void Init(IPALogger logger)
         {
             Logger.log = logger;
             Logger.Log("Logger prepared", LogLevel.Debug);
+            string path = Path.Combine(UnityGame.UserDataPath, $"{Plugin.Name}.ini");
+            _rootConfig = new RootConfig(path);
+            if (_rootConfig.ForceDisableSmoothCamera)
+            {
+                try
+                {
+                    string gameCfgPath = Path.Combine(Application.persistentDataPath, "settings.cfg");
+                    var settings = JsonConvert.DeserializeObject<ConfigEntity>(File.ReadAllText(gameCfgPath));
+                    if (settings.version == "1.6.0")
+                    {
+                        if (settings.smoothCameraEnabled == 1)
+                        {
+                            settings.smoothCameraEnabled = 0;
+                            File.WriteAllText(gameCfgPath, JsonConvert.SerializeObject(settings));
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Logger.Log($"Fail SmoothCamera off {e.Message}", LogLevel.Error);
+                }
+            }
         }
 
         [OnStart]
@@ -60,12 +84,11 @@ namespace CameraPlus
             CameraUtilities.AddNewCamera(Plugin.MainCamera);
             CameraProfiles.CreateMainDirectory();
 
-            string path = Path.Combine(UnityGame.UserDataPath, Plugin.Name + ".ini");
-            _rootConfig = new RootConfig(path);
             _profileChanger = new ProfileChanger();
-
+            MultiplayerSessionInit = false;
             Logger.Log($"{Plugin.Name} has started", LogLevel.Notice);
         }
+
 
         public void OnActiveSceneChanged(Scene from, Scene to)
         {
@@ -84,15 +107,18 @@ namespace CameraPlus
             {
                 if (_rootConfig.ProfileSceneChange)
                 {
-                    if (to.name == "GameCore") 
+                    if (to.name == "GameCore" && _rootConfig.GameProfile != "")
                     {
                         _profileChanger.ProfileChange(_rootConfig.GameProfile);
                     }
-                    else if (to.name == "MenuCore")
+                    else if ((to.name == "MenuCore" || to.name == "HealthWarning") && _rootConfig.MenuProfile != "")
+                    {
                         _profileChanger.ProfileChange(_rootConfig.MenuProfile);
+                    }
                 }
 
                 yield return new WaitForSeconds(1.0f);
+                while (Camera.main == null) yield return null;
 
                 // Invoke each activeSceneChanged event
                 foreach (var func in ActiveSceneChanged?.GetInvocationList())
@@ -108,17 +134,21 @@ namespace CameraPlus
                     }
                 }
             }
-            if (to.name == "GameCore")
+            if (to.name == "GameCore" || to.name == "MenuCore" || to.name == "MenuViewControllers" || to.name == "HealthWarning")
+            {
                 CameraUtilities.SetAllCameraCulling();
+            }
         }
 
         [OnExit]
         public void OnApplicationQuit()
         {
+            MultiplayerSession.Close();
             _harmony.UnpatchAll("com.brian91292.beatsaber.cameraplus");
         }
 
         public void OnSceneLoaded(Scene scene, LoadSceneMode sceneMode) { }
+
         public void OnSceneUnloaded(Scene scene) { }
         public void OnUpdate() { }
 
@@ -132,5 +162,7 @@ namespace CameraPlus
                 CameraPlusBehaviour.wasWithinBorder = false;
             }
         }
+
+
     }
 }
